@@ -1,6 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-
-const client = new Anthropic();
+import { spawn } from "child_process";
 
 export interface TestFailureInfo {
   jobName: string;
@@ -60,7 +58,7 @@ Your job is to determine whether test failures are "flaky" (unrelated to code ch
 4. If ANY test is "legitimate", the overall verdict MUST be "legitimate".
 5. Only return "flaky" when ALL failures appear unrelated to code changes.
 
-Respond with valid JSON matching this schema:
+Respond ONLY with valid JSON matching this schema (no markdown, no code fences, no explanation outside the JSON):
 {
   "verdict": "flaky" | "legitimate" | "unclear",
   "confidence": 0.0 to 1.0,
@@ -73,6 +71,47 @@ Respond with valid JSON matching this schema:
     }
   ]
 }`;
+
+function runClaude(prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("claude", ["-p", "--output-format", "text"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`claude exited with code ${code}: ${stderr}`));
+      } else {
+        resolve(stdout.trim());
+      }
+    });
+
+    proc.on("error", (err) => {
+      reject(new Error(`Failed to start claude CLI: ${err.message}`));
+    });
+
+    // Send prompt via stdin and close
+    proc.stdin.write(prompt);
+    proc.stdin.end();
+
+    // Timeout after 2 minutes
+    setTimeout(() => {
+      proc.kill();
+      reject(new Error("Claude Code CLI timed out after 120s"));
+    }, 120_000);
+  });
+}
 
 export async function analyzeFailure(
   failures: TestFailureInfo[],
@@ -90,31 +129,31 @@ export async function analyzeFailure(
     )
     .join("\n\n");
 
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 2048,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `## Failed Tests\n\n${failureSummary}\n\n## PR Diff\n\n\`\`\`diff\n${prDiff}\n\`\`\`\n\nAnalyze these failures and respond with JSON.`,
-      },
-    ],
-  });
+  const prompt = `${SYSTEM_PROMPT}\n\n---\n\n## Failed Tests\n\n${failureSummary}\n\n## PR Diff\n\n\`\`\`diff\n${prDiff}\n\`\`\`\n\nAnalyze these failures and respond with JSON only.`;
 
-  const text =
-    message.content[0].type === "text" ? message.content[0].text : "";
+  try {
+    const text = await runClaude(prompt);
 
-  // Extract JSON from response (handle markdown code blocks)
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
+    // Extract JSON from response (handle potential markdown code blocks)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error("Failed to extract JSON from Claude Code output:", text.slice(0, 500));
+      return {
+        verdict: "unclear",
+        confidence: 0,
+        reasoning: "Failed to parse Claude Code response",
+        failedTests: [],
+      };
+    }
+
+    return JSON.parse(jsonMatch[0]) as AnalysisResult;
+  } catch (error) {
+    console.error("Claude Code CLI error:", error);
     return {
       verdict: "unclear",
       confidence: 0,
-      reasoning: "Failed to parse Claude response",
+      reasoning: `Claude Code CLI failed: ${error instanceof Error ? error.message : "Unknown error"}`,
       failedTests: [],
     };
   }
-
-  return JSON.parse(jsonMatch[0]) as AnalysisResult;
 }

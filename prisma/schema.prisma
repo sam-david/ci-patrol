@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id @default(cuid())
+  githubId    Int       @unique
+  githubLogin String
+  avatarUrl   String?
+  accessToken String
+  slackUserId String?
+  monitors    Monitor[]
+  createdAt   DateTime  @default(now())
+}
+
+model Monitor {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id])
+  branch         String
+  prNumber       Int
+  prTitle        String
+  active         Boolean        @default(true)
+  maxReruns      Int            @default(2)
+  lastPipelineId String?
+  lastStatus     String?
+  rerunCount     Int            @default(0)
+  analyses       Analysis[]
+  notifications  Notification[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([userId, branch])
+}
+
+model Analysis {
+  id          String   @id @default(cuid())
+  monitorId   String
+  monitor     Monitor  @relation(fields: [monitorId], references: [id])
+  pipelineId  String
+  workflowId  String
+  verdict     String
+  reasoning   String
+  failedJobs  String
+  actionTaken String
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  monitorId  String
+  monitor    Monitor  @relation(fields: [monitorId], references: [id])
+  pipelineId String
+  type       String
+  slackTs    String?
+  createdAt  DateTime @default(now())
+
+  @@unique([monitorId, pipelineId, type])
+}

@@ -9,7 +9,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const prs = await fetchOpenPRs(user.accessToken, user.githubLogin);
+  const prs = await fetchOpenPRs(user.githubLogin);
   const branches = prs.map((pr) => pr.branch);
 
   // Fetch CI status for all branches in parallel

@@ -1,13 +1,40 @@
+import { spawn } from "child_process";
+
 const ORG = process.env.GITHUB_ORG!;
 const REPO = process.env.GITHUB_REPO!;
 
-interface GitHubPR {
-  number: number;
-  title: string;
-  head: { ref: string };
-  updated_at: string;
-  user: { login: string };
-  draft: boolean;
+function gh(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("gh", args, { stdio: ["pipe", "pipe", "pipe"] });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`gh exited with code ${code}: ${stderr}`));
+      } else {
+        resolve(stdout.trim());
+      }
+    });
+
+    proc.on("error", (err) => {
+      reject(new Error(`Failed to run gh CLI: ${err.message}`));
+    });
+  });
+}
+
+export interface GitHubUser {
+  login: string;
+  avatarUrl: string;
 }
 
 export interface PR {
@@ -19,57 +46,55 @@ export interface PR {
   draft: boolean;
 }
 
-export async function fetchOpenPRs(
-  accessToken: string,
-  author: string
-): Promise<PR[]> {
-  const res = await fetch(
-    `https://api.github.com/repos/${ORG}/${REPO}/pulls?state=open&sort=updated&direction=desc&per_page=50`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github+json",
-      },
-    }
-  );
-
-  if (!res.ok) {
-    throw new Error(`GitHub API error: ${res.status}`);
-  }
-
-  const prs: GitHubPR[] = await res.json();
-
-  return prs
-    .filter((pr) => pr.user.login === author)
-    .map((pr) => ({
-      number: pr.number,
-      title: pr.title,
-      branch: pr.head.ref,
-      updatedAt: pr.updated_at,
-      author: pr.user.login,
-      draft: pr.draft,
-    }));
+/** Get the currently authenticated GitHub user */
+export async function getCurrentUser(): Promise<GitHubUser> {
+  const json = await gh(["api", "user"]);
+  const user = JSON.parse(json);
+  return { login: user.login, avatarUrl: user.avatar_url };
 }
 
-export async function fetchPRDiff(
-  accessToken: string,
-  prNumber: number
-): Promise<string> {
-  const res = await fetch(
-    `https://api.github.com/repos/${ORG}/${REPO}/pulls/${prNumber}`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github.v3.diff",
-      },
-    }
+/** Fetch open PRs authored by the given user */
+export async function fetchOpenPRs(author: string): Promise<PR[]> {
+  const json = await gh([
+    "pr",
+    "list",
+    "--repo", `${ORG}/${REPO}`,
+    "--author", author,
+    "--state", "open",
+    "--json", "number,title,headRefName,updatedAt,author,isDraft",
+    "--limit", "50",
+  ]);
+
+  const prs = JSON.parse(json);
+
+  return prs.map(
+    (pr: {
+      number: number;
+      title: string;
+      headRefName: string;
+      updatedAt: string;
+      author: { login: string };
+      isDraft: boolean;
+    }) => ({
+      number: pr.number,
+      title: pr.title,
+      branch: pr.headRefName,
+      updatedAt: pr.updatedAt,
+      author: pr.author.login,
+      draft: pr.isDraft,
+    })
   );
+}
 
-  if (!res.ok) {
-    throw new Error(`GitHub diff API error: ${res.status}`);
-  }
+/** Fetch the diff for a PR */
+export async function fetchPRDiff(prNumber: number): Promise<string> {
+  const diff = await gh([
+    "pr",
+    "diff",
+    String(prNumber),
+    "--repo", `${ORG}/${REPO}`,
+  ]);
 
-  const diff = await res.text();
   // Truncate very large diffs to avoid blowing up Claude's context
   const maxLength = 50_000;
   if (diff.length > maxLength) {

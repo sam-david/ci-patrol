@@ -9,8 +9,8 @@ datasource db {
 
 model User {
   id          String    @id @default(cuid())
-  githubId    Int       @unique
-  githubLogin String
+  githubId    Int       @default(0)
+  githubLogin String    @unique
   avatarUrl   String?
   accessToken String
   slackUserId String?

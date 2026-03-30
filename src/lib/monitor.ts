@@ -58,9 +58,8 @@ async function processMonitor(
     maxReruns: number;
     user: {
       id: string;
-      accessToken: string;
-      slackUserId: string | null;
       githubLogin: string;
+      slackUserId: string | null;
     };
   }
 ): Promise<PollResult> {
@@ -183,7 +182,7 @@ async function processMonitor(
     };
   }
 
-  const prDiff = await fetchPRDiff(monitor.user.accessToken, monitor.prNumber);
+  const prDiff = await fetchPRDiff(monitor.prNumber);
 
   const failures: TestFailureInfo[] = failedJobDetails.map((j) => ({
     jobName: j.jobName,

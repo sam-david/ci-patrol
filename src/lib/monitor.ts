@@ -219,7 +219,20 @@ async function processMonitor(
     };
   }
 
-  // FAILED — analyze with Claude
+  // FAILED — check if we already analyzed this pipeline
+  const existingAnalysis = await prisma.analysis.findFirst({
+    where: { monitorId: monitor.id, pipelineId: pipeline.id },
+  });
+  if (existingAnalysis) {
+    return {
+      monitorId: monitor.id,
+      branch: monitor.branch,
+      action: "skipped",
+      detail: `Already analyzed this pipeline (verdict: ${existingAnalysis.verdict})`,
+    };
+  }
+
+  // Analyze with Claude
   const failedJobDetails = await getFailedJobDetails(pipeline.id);
 
   if (failedJobDetails.length === 0) {
@@ -267,12 +280,16 @@ async function processMonitor(
 
   if (analysis.verdict === "flaky") {
     // Rerun from failed
-    await rerunWorkflowFromFailed(workflowId);
+    const didRerun = await rerunWorkflowFromFailed(workflowId);
 
     const newRerunCount = monitor.rerunCount + 1;
     await prisma.monitor.update({
       where: { id: monitor.id },
-      data: { rerunCount: newRerunCount },
+      data: {
+        rerunCount: newRerunCount,
+        // Mark as "running" so the next poll detects when the rerun finishes
+        lastStatus: didRerun ? "running" : "failed",
+      },
     });
 
     if (monitor.user.slackUserId) {

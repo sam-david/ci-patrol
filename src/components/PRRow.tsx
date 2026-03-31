@@ -86,13 +86,7 @@ function ApprovalBadge({ count }: { count: number }) {
   );
 }
 
-function ReadyToMergeCheckbox({
-  monitor,
-  alreadyLabeled,
-}: {
-  monitor: Monitor;
-  alreadyLabeled: boolean;
-}) {
+function ReadyToMergeCheckbox({ monitor }: { monitor: Monitor }) {
   async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     await fetch(`/api/monitors/${monitor.id}`, {
       method: "PATCH",
@@ -100,14 +94,6 @@ function ReadyToMergeCheckbox({
       body: JSON.stringify({ readyToMerge: e.target.checked }),
     });
     mutate("/api/monitors");
-  }
-
-  if (alreadyLabeled) {
-    return (
-      <span className="text-xs text-purple-400" title="Label already applied on GitHub">
-        RTM
-      </span>
-    );
   }
 
   return (
@@ -125,7 +111,6 @@ function ReadyToMergeCheckbox({
 
 export function PRRow({ pr, monitor }: PRRowProps) {
   const latestAnalysis = monitor?.analyses?.[0];
-  const isReadyToMerge = pr.hasReadyToMerge || monitor?.readyToMerge;
 
   return (
     <div className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900 px-4 py-3 hover:border-gray-700 transition-colors">
@@ -139,11 +124,6 @@ export function PRRow({ pr, monitor }: PRRowProps) {
           >
             #{pr.number} {pr.title}
           </a>
-          {pr.hasReadyToMerge && (
-            <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-xs font-medium text-purple-400">
-              ready-to-merge
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-500">
           <code className="rounded bg-gray-800 px-1.5 py-0.5 font-mono">
@@ -151,11 +131,16 @@ export function PRRow({ pr, monitor }: PRRowProps) {
           </code>
           <span>{timeAgo(pr.updatedAt)}</span>
           {latestAnalysis && <VerdictBadge verdict={latestAnalysis.verdict} />}
+          {pr.hasReadyToMerge && (
+            <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-xs font-medium text-purple-400">
+              ready-to-merge
+            </span>
+          )}
         </div>
       </div>
 
       <div className="flex items-center gap-4 ml-4">
-        {monitor && <ReadyToMergeCheckbox monitor={monitor} alreadyLabeled={pr.hasReadyToMerge} />}
+        {monitor && <ReadyToMergeCheckbox monitor={monitor} />}
         <ApprovalBadge count={pr.approvalCount} />
         <StatusBadge status={pr.ciStatus} />
         <MonitorToggle

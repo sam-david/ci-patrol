@@ -82,13 +82,17 @@ export async function fetchOpenPRs(user: string): Promise<PR[]> {
 
   const allPrs = [...JSON.parse(authorJson), ...JSON.parse(assigneeJson)];
 
-  // Deduplicate by PR number
+  // Deduplicate by PR number, then sort by most recently updated
   const seen = new Set<number>();
-  const uniquePrs = allPrs.filter((pr: { number: number }) => {
-    if (seen.has(pr.number)) return false;
-    seen.add(pr.number);
-    return true;
-  });
+  const uniquePrs = allPrs
+    .filter((pr: { number: number }) => {
+      if (seen.has(pr.number)) return false;
+      seen.add(pr.number);
+      return true;
+    })
+    .sort((a: { updatedAt: string }, b: { updatedAt: string }) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
 
   return uniquePrs.map(
     (pr: {

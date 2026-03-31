@@ -183,12 +183,25 @@ export async function getFailedJobDetails(
   return results;
 }
 
-/** Rerun a workflow from failed jobs only */
+/** Rerun a workflow from failed jobs only.
+ *  Checks the workflow status first — refuses to rerun if it already passed. */
 export async function rerunWorkflowFromFailed(
   workflowId: string
-): Promise<void> {
+): Promise<boolean> {
+  // Safety check: don't rerun a workflow that already succeeded or is running
+  const data = await circleRequest(`/workflow/${workflowId}`);
+  if (data.status === "success") {
+    console.log(`[CI Patrol] Skipping rerun — workflow ${workflowId} already passed`);
+    return false;
+  }
+  if (data.status === "running") {
+    console.log(`[CI Patrol] Skipping rerun — workflow ${workflowId} is already running`);
+    return false;
+  }
+
   await circleRequest(`/workflow/${workflowId}/rerun`, {
     method: "POST",
     body: JSON.stringify({ from_failed: true }),
   });
+  return true;
 }

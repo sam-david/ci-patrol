@@ -61,6 +61,10 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // Clear old analyses and notifications so this is a fresh start
+  await prisma.analysis.deleteMany({ where: { monitorId: monitor.id } });
+  await prisma.notification.deleteMany({ where: { monitorId: monitor.id } });
+
   // Immediately check this monitor's CI status
   processMonitorById(monitor.id)
     .then((result) => {

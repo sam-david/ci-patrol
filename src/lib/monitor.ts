@@ -26,14 +26,18 @@ export async function runPollCycle(): Promise<PollResult[]> {
     include: { user: true },
   });
 
+  console.log(`[CI Patrol] Poll cycle: ${monitors.length} active monitor(s)`);
+
   const results: PollResult[] = [];
 
   for (const monitor of monitors) {
     try {
+      console.log(`[CI Patrol] Checking ${monitor.branch} (pipeline: ${monitor.lastPipelineId ?? "none"}, status: ${monitor.lastStatus ?? "unknown"})`);
       const result = await processMonitor(monitor);
+      console.log(`[CI Patrol] ${monitor.branch} → ${result.action}${result.detail ? `: ${result.detail}` : ""}`);
       results.push(result);
     } catch (error) {
-      console.error(`Error processing monitor ${monitor.id}:`, error);
+      console.error(`[CI Patrol] Error processing ${monitor.branch}:`, error);
       results.push({
         monitorId: monitor.id,
         branch: monitor.branch,
@@ -114,6 +118,7 @@ async function processMonitor(
   }
 
   const status = await getPipelineStatus(pipeline.id);
+  console.log(`[CI Patrol] ${monitor.branch}: pipeline ${pipeline.id} status=${status} (stored: ${monitor.lastPipelineId}, ${monitor.lastStatus})`);
 
   // No state change — skip
   if (pipeline.id === monitor.lastPipelineId && status === monitor.lastStatus) {

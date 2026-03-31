@@ -12,14 +12,24 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Run the monitoring poll cycle in the background on every refresh.
-  // This piggybacks on the frontend's 15-second SWR polling so we don't
-  // need a separate persistent process for background work.
-  runPollCycle().catch((error) => {
-    console.error("[CI Patrol] Poll cycle error:", error);
-  });
+  // Run PR fetch and poll cycle concurrently.
+  // The poll cycle must complete within this request — fire-and-forget
+  // gets killed by Next.js when the response is sent.
+  const [prs, pollResults] = await Promise.all([
+    fetchOpenPRs(user.githubLogin),
+    runPollCycle().catch((error) => {
+      console.error("[CI Patrol] Poll cycle error:", error);
+      return [];
+    }),
+  ]);
 
-  const prs = await fetchOpenPRs(user.githubLogin);
+  if (pollResults.length > 0) {
+    const active = pollResults.filter((r) => r.action !== "skipped");
+    if (active.length > 0) {
+      console.log("[CI Patrol] Poll actions:", active);
+    }
+  }
+
   const branches = prs.map((pr) => pr.branch);
 
   // Fetch CI status for all branches in parallel

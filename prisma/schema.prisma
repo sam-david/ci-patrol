@@ -40,16 +40,36 @@ model Monitor {
 }
 
 model Analysis {
-  id          String   @id @default(cuid())
+  id          String      @id @default(cuid())
   monitorId   String
-  monitor     Monitor  @relation(fields: [monitorId], references: [id])
+  monitor     Monitor     @relation(fields: [monitorId], references: [id])
   pipelineId  String
   workflowId  String
   verdict     String
   reasoning   String
   failedJobs  String
   actionTaken String
-  createdAt   DateTime @default(now())
+  flakySpecs  FlakySpec[]
+  createdAt   DateTime    @default(now())
+}
+
+model FlakySpec {
+  id           String   @id @default(cuid())
+  analysisId   String
+  analysis     Analysis @relation(fields: [analysisId], references: [id])
+  file         String
+  name         String
+  errorMessage String
+  errorClass   String?
+  jobName      String
+  branch       String
+  prNumber     Int
+  pipelineId   String
+  workflowId   String
+  createdAt    DateTime @default(now())
+
+  @@index([file])
+  @@index([createdAt])
 }
 
 model Notification {

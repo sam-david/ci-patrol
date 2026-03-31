@@ -274,7 +274,7 @@ async function processMonitor(
   const analysis = await analyzeFailure(failures, prDiff);
 
   // Save analysis
-  await prisma.analysis.create({
+  const savedAnalysis = await prisma.analysis.create({
     data: {
       monitorId: monitor.id,
       pipelineId: pipeline.id,
@@ -290,6 +290,40 @@ async function processMonitor(
       actionTaken: analysis.verdict === "flaky" ? "rerun" : "notified",
     },
   });
+
+  // Record individual flaky specs for tracking
+  const flakyTests = analysis.failedTests.filter((t) => t.classification === "flaky");
+  if (flakyTests.length > 0) {
+    // Build a map of test name → failure details from the raw job data
+    const testDetails = new Map<string, { file: string; message: string; jobName: string }>();
+    for (const job of failures) {
+      for (const test of job.failedTests) {
+        testDetails.set(test.name, { file: test.file, message: test.message, jobName: job.jobName });
+      }
+    }
+
+    await prisma.flakySpec.createMany({
+      data: flakyTests.map((t) => {
+        const detail = testDetails.get(t.name);
+        // Extract error class from message (e.g. "Net::ReadTimeout" from "Net::ReadTimeout: ...")
+        const errorClassMatch = detail?.message.match(/^([A-Z][\w:]+(?:::[A-Z]\w+)*)/);
+        return {
+          analysisId: savedAnalysis.id,
+          file: detail?.file ?? t.name,
+          name: t.name,
+          errorMessage: detail?.message.slice(0, 1000) ?? t.reason,
+          errorClass: errorClassMatch?.[1] ?? null,
+          jobName: detail?.jobName ?? "unknown",
+          branch: monitor.branch,
+          prNumber: monitor.prNumber,
+          pipelineId: pipeline.id,
+          workflowId,
+        };
+      }),
+    });
+
+    console.log(`[CI Patrol] Recorded ${flakyTests.length} flaky spec(s) for ${monitor.branch}`);
+  }
 
   if (analysis.verdict === "flaky") {
     // Rerun from failed

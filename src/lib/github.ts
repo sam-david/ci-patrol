@@ -44,6 +44,8 @@ export interface PR {
   updatedAt: string;
   author: string;
   draft: boolean;
+  approvalCount: number;
+  reviewDecision: string | null;
 }
 
 /** Get the currently authenticated GitHub user */
@@ -61,7 +63,7 @@ export async function fetchOpenPRs(author: string): Promise<PR[]> {
     "--repo", `${ORG}/${REPO}`,
     "--author", author,
     "--state", "open",
-    "--json", "number,title,headRefName,updatedAt,author,isDraft",
+    "--json", "number,title,headRefName,updatedAt,author,isDraft,reviews,reviewDecision",
     "--limit", "50",
   ]);
 
@@ -75,14 +77,29 @@ export async function fetchOpenPRs(author: string): Promise<PR[]> {
       updatedAt: string;
       author: { login: string };
       isDraft: boolean;
-    }) => ({
-      number: pr.number,
-      title: pr.title,
-      branch: pr.headRefName,
-      updatedAt: pr.updatedAt,
-      author: pr.author.login,
-      draft: pr.isDraft,
-    })
+      reviews: { state: string; author: { login: string } }[];
+      reviewDecision: string;
+    }) => {
+      // Count unique approvals (a reviewer may have multiple reviews, only latest matters)
+      const latestByReviewer = new Map<string, string>();
+      for (const review of pr.reviews) {
+        latestByReviewer.set(review.author.login, review.state);
+      }
+      const approvalCount = Array.from(latestByReviewer.values()).filter(
+        (state) => state === "APPROVED"
+      ).length;
+
+      return {
+        number: pr.number,
+        title: pr.title,
+        branch: pr.headRefName,
+        updatedAt: pr.updatedAt,
+        author: pr.author.login,
+        draft: pr.isDraft,
+        approvalCount,
+        reviewDecision: pr.reviewDecision || null,
+      };
+    }
   );
 }
 

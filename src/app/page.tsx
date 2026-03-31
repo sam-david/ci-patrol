@@ -87,6 +87,7 @@ export default function Dashboard() {
                 branch: string;
                 updatedAt: string;
                 ciStatus: string | null;
+                approvalCount: number;
               }) => (
                 <PRRow
                   key={pr.number}

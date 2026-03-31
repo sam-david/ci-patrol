@@ -9,6 +9,7 @@ interface PR {
   branch: string;
   updatedAt: string;
   ciStatus: string | null;
+  approvalCount: number;
 }
 
 interface Monitor {
@@ -61,6 +62,27 @@ function VerdictBadge({ verdict }: { verdict: string }) {
   );
 }
 
+function ApprovalBadge({ count }: { count: number }) {
+  if (count === 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        0
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-green-400">
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      {count}
+    </span>
+  );
+}
+
 export function PRRow({ pr, monitor }: PRRowProps) {
   const latestAnalysis = monitor?.analyses?.[0];
 
@@ -87,6 +109,7 @@ export function PRRow({ pr, monitor }: PRRowProps) {
       </div>
 
       <div className="flex items-center gap-4 ml-4">
+        <ApprovalBadge count={pr.approvalCount} />
         <StatusBadge status={pr.ciStatus} />
         <MonitorToggle
           branch={pr.branch}

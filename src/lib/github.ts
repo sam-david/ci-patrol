@@ -56,21 +56,41 @@ export async function getCurrentUser(): Promise<GitHubUser> {
   return { login: user.login, avatarUrl: user.avatar_url };
 }
 
-/** Fetch open PRs authored by the given user */
-export async function fetchOpenPRs(author: string): Promise<PR[]> {
-  const json = await gh([
-    "pr",
-    "list",
-    "--repo", `${ORG}/${REPO}`,
-    "--author", author,
-    "--state", "open",
-    "--json", "number,title,headRefName,updatedAt,author,isDraft,reviews,reviewDecision,labels",
-    "--limit", "50",
+const PR_JSON_FIELDS = "number,title,headRefName,updatedAt,author,isDraft,reviews,reviewDecision,labels,assignees";
+
+/** Fetch open PRs authored by or assigned to the given user */
+export async function fetchOpenPRs(user: string): Promise<PR[]> {
+  // gh pr list doesn't support --author + --assignee together, so fetch both and dedupe
+  const [authorJson, assigneeJson] = await Promise.all([
+    gh([
+      "pr", "list",
+      "--repo", `${ORG}/${REPO}`,
+      "--author", user,
+      "--state", "open",
+      "--json", PR_JSON_FIELDS,
+      "--limit", "50",
+    ]),
+    gh([
+      "pr", "list",
+      "--repo", `${ORG}/${REPO}`,
+      "--assignee", user,
+      "--state", "open",
+      "--json", PR_JSON_FIELDS,
+      "--limit", "50",
+    ]),
   ]);
 
-  const prs = JSON.parse(json);
+  const allPrs = [...JSON.parse(authorJson), ...JSON.parse(assigneeJson)];
 
-  return prs.map(
+  // Deduplicate by PR number
+  const seen = new Set<number>();
+  const uniquePrs = allPrs.filter((pr: { number: number }) => {
+    if (seen.has(pr.number)) return false;
+    seen.add(pr.number);
+    return true;
+  });
+
+  return uniquePrs.map(
     (pr: {
       number: number;
       title: string;

@@ -1,5 +1,6 @@
 "use client";
 
+import { mutate } from "swr";
 import { StatusBadge } from "./StatusBadge";
 import { MonitorToggle } from "./MonitorToggle";
 
@@ -10,6 +11,7 @@ interface PR {
   updatedAt: string;
   ciStatus: string | null;
   approvalCount: number;
+  hasReadyToMerge: boolean;
 }
 
 interface Monitor {
@@ -17,6 +19,7 @@ interface Monitor {
   active: boolean;
   maxReruns: number;
   rerunCount: number;
+  readyToMerge: boolean;
   analyses: { verdict: string; reasoning: string }[];
 }
 
@@ -83,8 +86,46 @@ function ApprovalBadge({ count }: { count: number }) {
   );
 }
 
+function ReadyToMergeCheckbox({
+  monitor,
+  alreadyLabeled,
+}: {
+  monitor: Monitor;
+  alreadyLabeled: boolean;
+}) {
+  async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    await fetch(`/api/monitors/${monitor.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ readyToMerge: e.target.checked }),
+    });
+    mutate("/api/monitors");
+  }
+
+  if (alreadyLabeled) {
+    return (
+      <span className="text-xs text-purple-400" title="Label already applied on GitHub">
+        RTM
+      </span>
+    );
+  }
+
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer" title="Apply ready-to-merge label when CI passes">
+      <input
+        type="checkbox"
+        checked={monitor.readyToMerge}
+        onChange={handleChange}
+        className="rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-500 focus:ring-offset-0 h-3.5 w-3.5"
+      />
+      RTM
+    </label>
+  );
+}
+
 export function PRRow({ pr, monitor }: PRRowProps) {
   const latestAnalysis = monitor?.analyses?.[0];
+  const isReadyToMerge = pr.hasReadyToMerge || monitor?.readyToMerge;
 
   return (
     <div className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900 px-4 py-3 hover:border-gray-700 transition-colors">
@@ -98,6 +139,11 @@ export function PRRow({ pr, monitor }: PRRowProps) {
           >
             #{pr.number} {pr.title}
           </a>
+          {pr.hasReadyToMerge && (
+            <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-xs font-medium text-purple-400">
+              ready-to-merge
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-500">
           <code className="rounded bg-gray-800 px-1.5 py-0.5 font-mono">
@@ -109,6 +155,7 @@ export function PRRow({ pr, monitor }: PRRowProps) {
       </div>
 
       <div className="flex items-center gap-4 ml-4">
+        {monitor && <ReadyToMergeCheckbox monitor={monitor} alreadyLabeled={pr.hasReadyToMerge} />}
         <ApprovalBadge count={pr.approvalCount} />
         <StatusBadge status={pr.ciStatus} />
         <MonitorToggle

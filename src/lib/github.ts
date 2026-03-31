@@ -46,6 +46,7 @@ export interface PR {
   draft: boolean;
   approvalCount: number;
   reviewDecision: string | null;
+  hasReadyToMerge: boolean;
 }
 
 /** Get the currently authenticated GitHub user */
@@ -63,7 +64,7 @@ export async function fetchOpenPRs(author: string): Promise<PR[]> {
     "--repo", `${ORG}/${REPO}`,
     "--author", author,
     "--state", "open",
-    "--json", "number,title,headRefName,updatedAt,author,isDraft,reviews,reviewDecision",
+    "--json", "number,title,headRefName,updatedAt,author,isDraft,reviews,reviewDecision,labels",
     "--limit", "50",
   ]);
 
@@ -79,6 +80,7 @@ export async function fetchOpenPRs(author: string): Promise<PR[]> {
       isDraft: boolean;
       reviews: { state: string; author: { login: string } }[];
       reviewDecision: string;
+      labels: { name: string }[];
     }) => {
       // Count unique approvals (a reviewer may have multiple reviews, only latest matters)
       const latestByReviewer = new Map<string, string>();
@@ -98,6 +100,7 @@ export async function fetchOpenPRs(author: string): Promise<PR[]> {
         draft: pr.isDraft,
         approvalCount,
         reviewDecision: pr.reviewDecision || null,
+        hasReadyToMerge: pr.labels.some((l) => l.name === "ready-to-merge"),
       };
     }
   );
@@ -118,4 +121,16 @@ export async function fetchPRDiff(prNumber: number): Promise<string> {
     return diff.slice(0, maxLength) + "\n\n... [diff truncated]";
   }
   return diff;
+}
+
+/** Add the ready-to-merge label to a PR */
+export async function addReadyToMergeLabel(prNumber: number): Promise<void> {
+  await gh([
+    "pr",
+    "edit",
+    String(prNumber),
+    "--repo", `${ORG}/${REPO}`,
+    "--add-label", "ready-to-merge",
+  ]);
+  console.log(`[CI Patrol] Added ready-to-merge label to PR #${prNumber}`);
 }

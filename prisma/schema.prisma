@@ -27,6 +27,7 @@ model Monitor {
   prTitle        String
   active         Boolean        @default(true)
   maxReruns      Int            @default(2)
+  readyToMerge   Boolean        @default(false)
   lastPipelineId String?
   lastStatus     String?
   rerunCount     Int            @default(0)

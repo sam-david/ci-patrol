@@ -5,7 +5,7 @@ import {
   getFailedJobDetails,
   rerunWorkflowFromFailed,
 } from "./circleci";
-import { fetchPRDiff } from "./github";
+import { fetchPRDiff, addReadyToMergeLabel } from "./github";
 import { analyzeFailure, type TestFailureInfo } from "./claude";
 import {
   notifyPass,
@@ -104,6 +104,7 @@ async function processMonitor(
     lastStatus: string | null;
     rerunCount: number;
     maxReruns: number;
+    readyToMerge: boolean;
     user: {
       id: string;
       githubLogin: string;
@@ -182,6 +183,16 @@ async function processMonitor(
         },
       });
     }
+
+    // Apply ready-to-merge label if flagged
+    if (monitor.readyToMerge) {
+      try {
+        await addReadyToMergeLabel(monitor.prNumber);
+      } catch (error) {
+        console.error(`[CI Patrol] Failed to add ready-to-merge label to PR #${monitor.prNumber}:`, error);
+      }
+    }
+
     return { monitorId: monitor.id, branch: monitor.branch, action: "pass" };
   }
 

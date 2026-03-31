@@ -52,6 +52,7 @@ export default function Dashboard() {
     active: boolean;
     maxReruns: number;
     rerunCount: number;
+    readyToMerge: boolean;
     analyses: { verdict: string; reasoning: string }[];
   }
 
@@ -88,6 +89,7 @@ export default function Dashboard() {
                 updatedAt: string;
                 ciStatus: string | null;
                 approvalCount: number;
+                hasReadyToMerge: boolean;
               }) => (
                 <PRRow
                   key={pr.number}

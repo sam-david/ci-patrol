@@ -22,9 +22,12 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const updateData: { maxReruns?: number } = {};
+  const updateData: { maxReruns?: number; readyToMerge?: boolean } = {};
   if (typeof body.maxReruns === "number" && body.maxReruns >= 1 && body.maxReruns <= 10) {
     updateData.maxReruns = body.maxReruns;
+  }
+  if (typeof body.readyToMerge === "boolean") {
+    updateData.readyToMerge = body.readyToMerge;
   }
 
   const updated = await prisma.monitor.update({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { processMonitorById, startBackgroundPolling } from "@/lib/monitor";
 
 export async function GET() {
   const user = await getSession();
@@ -57,6 +58,18 @@ export async function POST(request: NextRequest) {
       prTitle,
     },
   });
+
+  // Immediately check this monitor's CI status
+  processMonitorById(monitor.id)
+    .then((result) => {
+      console.log(`[CI Patrol] Initial check for ${branch}:`, result);
+    })
+    .catch((error) => {
+      console.error(`[CI Patrol] Initial check failed for ${branch}:`, error);
+    });
+
+  // Ensure background polling is running
+  startBackgroundPolling();
 
   return NextResponse.json({ monitor }, { status: 201 });
 }

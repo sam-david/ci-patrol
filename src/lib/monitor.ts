@@ -46,6 +46,50 @@ export async function runPollCycle(): Promise<PollResult[]> {
   return results;
 }
 
+/** Process a single monitor by ID — used for immediate check on toggle */
+export async function processMonitorById(monitorId: string): Promise<PollResult> {
+  const monitor = await prisma.monitor.findUnique({
+    where: { id: monitorId },
+    include: { user: true },
+  });
+
+  if (!monitor || !monitor.active) {
+    return { monitorId, branch: "unknown", action: "skipped", detail: "Monitor not found or inactive" };
+  }
+
+  return processMonitor(monitor);
+}
+
+// --- Background polling ---
+
+const POLL_INTERVAL_MS = 45_000;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startBackgroundPolling() {
+  if (pollTimer) return; // already running
+
+  console.log(`[CI Patrol] Starting background polling every ${POLL_INTERVAL_MS / 1000}s`);
+  pollTimer = setInterval(async () => {
+    try {
+      const results = await runPollCycle();
+      const active = results.filter((r) => r.action !== "skipped");
+      if (active.length > 0) {
+        console.log("[CI Patrol] Poll results:", active);
+      }
+    } catch (error) {
+      console.error("[CI Patrol] Poll cycle error:", error);
+    }
+  }, POLL_INTERVAL_MS);
+}
+
+export function stopBackgroundPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+    console.log("[CI Patrol] Stopped background polling");
+  }
+}
+
 async function processMonitor(
   monitor: {
     id: string;

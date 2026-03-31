@@ -107,30 +107,53 @@ export async function getTestResults(
   return data.items ?? [];
 }
 
-/** Derive an overall CI status from a pipeline's workflows */
+/** Derive an overall CI status from a pipeline's workflows.
+ *  When a workflow is rerun from failed, CircleCI creates a new workflow
+ *  under the same pipeline. We group by workflow name and only consider
+ *  the most recent run of each workflow to avoid stale failed statuses. */
 export async function getPipelineStatus(
   pipelineId: string
 ): Promise<"running" | "success" | "failed" | "pending" | "canceled"> {
   const workflows = await getWorkflows(pipelineId);
   if (workflows.length === 0) return "pending";
 
-  const statuses = workflows.map((w) => w.status);
+  // Keep only the most recent workflow per name (reruns share the same name)
+  const latestByName = new Map<string, Workflow>();
+  for (const wf of workflows) {
+    const existing = latestByName.get(wf.name);
+    if (!existing || new Date(wf.created_at) > new Date(existing.created_at)) {
+      latestByName.set(wf.name, wf);
+    }
+  }
 
-  if (statuses.some((s) => s === "failing" || s === "failed")) return "failed";
+  const statuses = Array.from(latestByName.values()).map((w) => w.status);
+
   if (statuses.some((s) => s === "running" || s === "on_hold")) return "running";
   if (statuses.every((s) => s === "success")) return "success";
+  if (statuses.some((s) => s === "failing" || s === "failed")) return "failed";
   if (statuses.some((s) => s === "canceled")) return "canceled";
 
   return "pending";
 }
 
-/** Get failed jobs with their test output for a pipeline */
+/** Get failed jobs with their test output for a pipeline.
+ *  Only considers the most recent run of each workflow (ignores old reruns). */
 export async function getFailedJobDetails(
   pipelineId: string
 ): Promise<
   { workflowId: string; jobName: string; jobNumber: number; failedTests: TestResult[] }[]
 > {
-  const workflows = await getWorkflows(pipelineId);
+  const allWorkflows = await getWorkflows(pipelineId);
+
+  // Keep only the most recent workflow per name
+  const latestByName = new Map<string, Workflow>();
+  for (const wf of allWorkflows) {
+    const existing = latestByName.get(wf.name);
+    if (!existing || new Date(wf.created_at) > new Date(existing.created_at)) {
+      latestByName.set(wf.name, wf);
+    }
+  }
+
   const results: {
     workflowId: string;
     jobName: string;
@@ -138,7 +161,7 @@ export async function getFailedJobDetails(
     failedTests: TestResult[];
   }[] = [];
 
-  for (const workflow of workflows) {
+  for (const workflow of latestByName.values()) {
     if (workflow.status !== "failed" && workflow.status !== "failing") continue;
 
     const jobs = await getJobs(workflow.id);

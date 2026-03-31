@@ -219,19 +219,6 @@ async function processMonitor(
     };
   }
 
-  // FAILED — check if we already analyzed this pipeline
-  const existingAnalysis = await prisma.analysis.findFirst({
-    where: { monitorId: monitor.id, pipelineId: pipeline.id },
-  });
-  if (existingAnalysis) {
-    return {
-      monitorId: monitor.id,
-      branch: monitor.branch,
-      action: "skipped",
-      detail: `Already analyzed this pipeline (verdict: ${existingAnalysis.verdict})`,
-    };
-  }
-
   // Analyze with Claude
   const failedJobDetails = await getFailedJobDetails(pipeline.id);
 
@@ -241,6 +228,24 @@ async function processMonitor(
       branch: monitor.branch,
       action: "skipped",
       detail: "Failed status but no failed jobs found",
+    };
+  }
+
+  // Pick the first failed workflow for rerun
+  const workflowId = failedJobDetails[0].workflowId;
+
+  // Check if we already analyzed this specific workflow run.
+  // Pipeline-level dedup is too broad because workflow reruns create
+  // new failures under the same pipeline ID.
+  const existingAnalysis = await prisma.analysis.findFirst({
+    where: { monitorId: monitor.id, workflowId },
+  });
+  if (existingAnalysis) {
+    return {
+      monitorId: monitor.id,
+      branch: monitor.branch,
+      action: "skipped",
+      detail: `Already analyzed workflow ${workflowId} (verdict: ${existingAnalysis.verdict})`,
     };
   }
 
@@ -256,9 +261,6 @@ async function processMonitor(
   }));
 
   const analysis = await analyzeFailure(failures, prDiff);
-
-  // Pick the first failed workflow for rerun
-  const workflowId = failedJobDetails[0].workflowId;
 
   // Save analysis
   await prisma.analysis.create({

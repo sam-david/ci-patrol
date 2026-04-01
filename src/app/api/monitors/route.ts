@@ -61,7 +61,17 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Clear old analyses and notifications so this is a fresh start
+  // Clear old data so this is a fresh start.
+  // Delete flaky specs first (FK → analysis), then analyses, then notifications.
+  const analysisIds = (
+    await prisma.analysis.findMany({
+      where: { monitorId: monitor.id },
+      select: { id: true },
+    })
+  ).map((a) => a.id);
+  if (analysisIds.length > 0) {
+    await prisma.flakySpec.deleteMany({ where: { analysisId: { in: analysisIds } } });
+  }
   await prisma.analysis.deleteMany({ where: { monitorId: monitor.id } });
   await prisma.notification.deleteMany({ where: { monitorId: monitor.id } });
 
